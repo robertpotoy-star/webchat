@@ -1,48 +1,279 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Chat</title>
+  <meta charset="utf-8">
+  <title>Discord-like Chat</title>
   <style>
-    body { font-family: sans-serif; max-width: 500px; margin: 20px auto; }
-    #messages { border: 1px solid #ccc; height: 300px; overflow-y: auto; padding: 10px; }
-    .msg { margin: 5px 0; padding: 6px 10px; background: #eef; border-radius: 8px; }
-    #inputRow { display: flex; margin-top: 10px; }
-    #input { flex: 1; padding: 8px; }
-    button { padding: 8px 14px; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', sans-serif; height: 100vh; overflow: hidden; background: #313338; color: #dbdee1; }
+    .app { display: flex; height: 100vh; }
+
+    /* Server (group) sidebar */
+    .servers { width: 72px; background: #1e1f22; display: flex; flex-direction: column; align-items: center; padding: 12px 0; gap: 8px; }
+    .server-icon {
+      width: 48px; height: 48px; border-radius: 50%; background: #313338; color: #dbdee1;
+      display: flex; align-items: center; justify-content: center; cursor: pointer;
+      font-weight: bold; transition: 0.15s; font-size: 14px;
+    }
+    .server-icon:hover, .server-icon.active { background: #5865f2; border-radius: 16px; }
+    .add-server { background: #2b2d31; color: #3ba55d; font-size: 24px; }
+
+    /* Channel / group list */
+    .channels { width: 240px; background: #2b2d31; display: flex; flex-direction: column; }
+    .channels h3 { padding: 16px; font-size: 15px; color: #f2f3f5; border-bottom: 1px solid #1e1f22; }
+    .channel { padding: 8px 16px; cursor: pointer; color: #949ba4; font-size: 14px; border-radius: 4px; margin: 2px 8px; }
+    .channel:hover { background: #35373c; color: #dbdee1; }
+    .channel.active { background: #404249; color: #fff; }
+    .new-group { margin: 8px; padding: 8px; background: #5865f2; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
+
+    /* Chat area */
+    .chat { flex: 1; display: flex; flex-direction: column; background: #313338; }
+    .chat-header { padding: 12px 16px; border-bottom: 1px solid #1e1f22; font-weight: bold; color: #f2f3f5; }
+    .messages { flex: 1; overflow-y: auto; padding: 16px; }
+    .msg { margin: 8px 0; }
+    .msg .author { color: #5865f2; font-weight: bold; margin-right: 8px; }
+    .msg .time { color: #949ba4; font-size: 11px; }
+    .msg.system { color: #949ba4; font-style: italic; font-size: 13px; }
+    .input-row { display: flex; padding: 16px; gap: 8px; }
+    .input-row input { flex: 1; padding: 12px; background: #383a40; border: none; border-radius: 8px; color: #dbdee1; outline: none; }
+    .input-row button { padding: 12px 20px; background: #5865f2; color: #fff; border: none; border-radius: 8px; cursor: pointer; }
+
+    /* Auth screen */
+    .auth-screen { position: fixed; inset: 0; background: #313338; display: flex; align-items: center; justify-content: center; z-index: 10; }
+    .auth-box { background: #2b2d31; padding: 32px; border-radius: 8px; width: 380px; }
+    .auth-box h1 { color: #f2f3f5; text-align: center; margin-bottom: 20px; font-size: 24px; }
+    .auth-box input { width: 100%; padding: 12px; margin-bottom: 12px; background: #1e1f22; border: 1px solid #1e1f22; border-radius: 4px; color: #dbdee1; outline: none; }
+    .auth-box input:focus { border-color: #5865f2; }
+    .auth-box button { width: 100%; padding: 12px; background: #5865f2; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+    .auth-box .toggle { color: #00a8fc; text-align: center; margin-top: 12px; cursor: pointer; font-size: 14px; }
+    .auth-box .error { color: #f23f43; font-size: 13px; margin-bottom: 10px; min-height: 18px; }
+
+    .user-bar { padding: 10px 16px; background: #232428; display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+    .user-bar button { background: transparent; border: none; color: #f23f43; cursor: pointer; font-size: 13px; }
   </style>
 </head>
 <body>
-  <h2>Chat</h2>
-  <div id="messages"></div>
-  <div id="inputRow">
-    <input id="input" placeholder="Type a message..." />
-    <button onclick="send()">Send</button>
+
+<!-- AUTH SCREEN -->
+<div class="auth-screen" id="authScreen">
+  <div class="auth-box">
+    <h1 id="authTitle">Welcome Back!</h1>
+    <div class="error" id="authError"></div>
+    <input id="authUser" placeholder="Username" autocomplete="username">
+    <input id="authPass" type="password" placeholder="Password" autocomplete="current-password">
+    <button id="authBtn" onclick="submitAuth()">Login</button>
+    <div class="toggle" id="authToggle" onclick="toggleMode()">Need an account? Register</div>
   </div>
+</div>
+
+<!-- MAIN APP -->
+<div class="app" style="display:none" id="app">
+  <div class="servers" id="servers"></div>
+  <div class="channels">
+    <h3>Text Channels</h3>
+    <div id="channelList"></div>
+    <button class="new-group" onclick="createGroup()">+ New Group</button>
+    <div style="flex:1"></div>
+    <div class="user-bar">
+      <span id="currentUser"></span>
+      <button onclick="logout()">Logout</button>
+    </div>
+  </div>
+  <div class="chat">
+    <div class="chat-header" id="chatHeader"># general</div>
+    <div class="messages" id="messages"></div>
+    <div class="input-row">
+      <input id="input" placeholder="Message..." onkeydown="if(event.key==='Enter') send()">
+      <button onclick="send()">Send</button>
+    </div>
+  </div>
+</div>
 
 <script>
-  const messagesEl = document.getElementById('messages');
-  const inputEl = document.getElementById('input');
+// ---------- STATE ----------
+let ws = null;
+let token = localStorage.getItem('token');
+let currentUser = null;
+let groups = [];
+let currentGroupId = 1;
+let isRegisterMode = false;
 
-  // Automatically connect to the same host that served this page
+// ---------- AUTH UI ----------
+function toggleMode() {
+  isRegisterMode = !isRegisterMode;
+  document.getElementById('authTitle').textContent = isRegisterMode ? 'Create an Account' : 'Welcome Back!';
+  document.getElementById('authBtn').textContent = isRegisterMode ? 'Register' : 'Login';
+  document.getElementById('authToggle').textContent = isRegisterMode ? 'Already have an account? Login' : 'Need an account? Register';
+  document.getElementById('authError').textContent = '';
+}
+
+async function submitAuth() {
+  const username = document.getElementById('authUser').value.trim();
+  const password = document.getElementById('authPass').value;
+  const errEl = document.getElementById('authError');
+  errEl.textContent = '';
+
+  if (!username || !password) { errEl.textContent = 'Fill in all fields'; return; }
+
+  const endpoint = isRegisterMode ? '/api/register' : '/api/login';
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    const data = await res.json();
+    if (!res.ok) { errEl.textContent = data.error || 'Failed'; return; }
+
+    token = data.token;
+    localStorage.setItem('token', token);
+    startChat();
+  } catch (e) {
+    errEl.textContent = 'Network error';
+  }
+}
+
+function logout() {
+  localStorage.removeItem('token');
+  token = null;
+  if (ws) ws.close();
+  location.reload();
+}
+
+// ---------- CONNECT WEBSOCKET ----------
+function startChat() {
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const ws = new WebSocket(`${protocol}//${location.host}`);
+  ws = new WebSocket(`${protocol}//${location.host}`);
 
-  ws.onmessage = e => {
-    const div = document.createElement('div');
-    div.className = 'msg';
-    div.textContent = e.data;
-    messagesEl.appendChild(div);
-    messagesEl.scrollTop = messagesEl.scrollHeight;
+  ws.onopen = () => {
+    console.log('WebSocket connected');
+    ws.send(JSON.stringify({ type: 'auth', token }));
   };
 
-  function send() {
-    const text = inputEl.value.trim();
-    if (!text || ws.readyState !== 1) return;
-    ws.send(text);
-    inputEl.value = '';
-  }
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
 
-  inputEl.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+    if (msg.type === 'auth_error') {
+      localStorage.removeItem('token');
+      alert('Session expired. Please log in again.');
+      location.reload();
+      return;
+    }
+
+    if (msg.type === 'ready') {
+      currentUser = msg.username;
+      groups = msg.groups;
+      currentGroupId = msg.groupId;
+      document.getElementById('authScreen').style.display = 'none';
+      document.getElementById('app').style.display = 'flex';
+      document.getElementById('currentUser').textContent = currentUser;
+      renderGroups();
+      renderMessages(msg.history, true);
+    }
+
+    if (msg.type === 'history') {
+      currentGroupId = msg.groupId;
+      renderGroups();
+      renderMessages(msg.history, true);
+    }
+
+    if (msg.type === 'groups') {
+      groups = msg.groups;
+      renderGroups();
+    }
+
+    if (msg.type === 'message') {
+      appendMessage(msg.username, msg.text, msg.createdAt);
+    }
+
+    if (msg.type === 'system') {
+      const div = document.createElement('div');
+      div.className = 'msg system';
+      div.textContent = msg.text;
+      document.getElementById('messages').appendChild(div);
+      scrollBottom();
+    }
+  };
+
+  ws.onclose = () => console.log('WebSocket closed');
+  ws.onerror = (err) => console.error('WebSocket error', err);
+}
+
+// ---------- RENDER ----------
+function renderGroups() {
+  const serverEl = document.getElementById('servers');
+  const channelEl = document.getElementById('channelList');
+  serverEl.innerHTML = '';
+  channelEl.innerHTML = '';
+
+  groups.forEach(g => {
+    // Server icon (first letter)
+    const icon = document.createElement('div');
+    icon.className = 'server-icon' + (g.id === currentGroupId ? ' active' : '');
+    icon.textContent = g.name[0].toUpperCase();
+    icon.title = g.name;
+    icon.onclick = () => joinGroup(g.id);
+    serverEl.appendChild(icon);
+
+    // Channel entry
+    const ch = document.createElement('div');
+    ch.className = 'channel' + (g.id === currentGroupId ? ' active' : '');
+    ch.textContent = '# ' + g.name;
+    ch.onclick = () => joinGroup(g.id);
+    channelEl.appendChild(ch);
+  });
+
+  document.getElementById('chatHeader').textContent = '#' + (groups.find(g => g.id === currentGroupId)?.name || 'general');
+}
+
+function renderMessages(history, clear) {
+  const el = document.getElementById('messages');
+  if (clear) el.innerHTML = '';
+  history.forEach(m => appendMessage(m.username, m.content, m.created_at));
+  scrollBottom();
+}
+
+function appendMessage(author, text, ts) {
+  const el = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg';
+  const time = new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  div.innerHTML = `<span class="author"></span><span class="time">${time}</span><br><span class="text"></span>`;
+  div.querySelector('.author').textContent = author;
+  div.querySelector('.text').textContent = text;
+  el.appendChild(div);
+  scrollBottom();
+}
+
+function scrollBottom() {
+  const el = document.getElementById('messages');
+  el.scrollTop = el.scrollHeight;
+}
+
+// ---------- ACTIONS ----------
+function joinGroup(id) {
+  ws.send(JSON.stringify({ type: 'join_group', groupId: id }));
+}
+
+function createGroup() {
+  const name = prompt('Group name:');
+  if (!name) return;
+  ws.send(JSON.stringify({ type: 'create_group', name }));
+}
+
+function send() {
+  const input = document.getElementById('input');
+  const text = input.value.trim();
+  if (!text) return;
+  if (!ws || ws.readyState !== 1) { alert('Not connected'); return; }
+  ws.send(JSON.stringify({ type: 'message', text }));
+  input.value = '';
+}
+
+// ---------- AUTO-LOGIN ----------
+if (token) {
+  startChat();
+}
 </script>
 </body>
 </html>

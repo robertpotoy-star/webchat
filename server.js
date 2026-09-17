@@ -7,7 +7,6 @@ const bcrypt = require('bcryptjs');
 const { DatabaseSync } = require('node:sqlite');
 
 // ---------- GLOBAL CRASH LOGGING ----------
-// So Render logs show the real error if anything crashes
 process.on('uncaughtException', (err) => {
   console.error('💥 UNCAUGHT EXCEPTION:', err);
 });
@@ -69,15 +68,28 @@ function sendJSON(res, status, obj) {
   res.writeHead(status, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(obj));
 }
-// Keep-alive endpoint for Render free tier
-if (req.url === '/ping') {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('pong');
-  return;
-}
-// ---------- HTTP SERVER (also serves the HTML) ----------
+
+// ---------- HTTP SERVER ----------
 const server = http.createServer(async (req, res) => {
   console.log(`${req.method} ${req.url}`);
+
+  // ---- KEEP-ALIVE PING (prevents Render free-tier spin-down) ----
+  if (req.url === '/ping') {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('pong');
+    return;
+  }
+
+  // ---- VERSION CHECK ----
+  if (req.url === '/__version') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      version: 'v4-with-selfping',
+      node: process.version,
+      hasUpgradeHandler: true
+    }));
+    return;
+  }
 
   // ---- API ROUTES ----
   if (req.url.startsWith('/api/')) {
@@ -100,7 +112,7 @@ const server = http.createServer(async (req, res) => {
         console.log(`✅ Registered user: ${username}`);
         return sendJSON(res, 200, { token, username, message: 'Account created!' });
       } catch (e) {
-        console.error('Register error:', e.message);
+        // Duplicate username — expected, not a real error
         return sendJSON(res, 400, { error: 'Username already taken' });
       }
     }
@@ -129,15 +141,6 @@ const server = http.createServer(async (req, res) => {
   }
 
   // ---- SERVE FRONTEND ----
-  if (req.url === '/__version') {
-  res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({
-    version: 'v3-with-upgrade',
-    node: process.version,
-    hasUpgradeHandler: true
-  }));
-  return;
-}
   if (req.url === '/' || req.url === '/index.html') {
     const filePath = path.join(__dirname, 'public', 'index.html');
     fs.readFile(filePath, (err, data) => {
@@ -158,25 +161,25 @@ const server = http.createServer(async (req, res) => {
 });
 
 // ---------- WEBSOCKET SERVER ----------
-// noServer: true means we manually handle the upgrade event so we can log every step
 const wss = new WebSocketServer({ noServer: true });
 const clients = new Map(); // ws -> { userId, username, groupId }
 
-// Manual upgrade handling — this is what makes WebSocket work on Render
 server.on('upgrade', (req, socket, head) => {
   console.log('🔄 Upgrade request:', req.url, 'from', req.headers.host);
-  
-  // Only accept upgrades on /ws, reject others gracefully
-  if (req.url !== '/ws') {
-    console.log('❌ Upgrade on wrong path:', req.url);
+
+  try {
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      console.log('✅ WebSocket upgraded');
+      wss.emit('connection', ws, req);
+    });
+  } catch (err) {
+    console.error('❌ handleUpgrade threw:', err.message);
     socket.destroy();
-    return;
   }
-  
-  wss.handleUpgrade(req, socket, head, (ws) => {
-    console.log('✅ WebSocket upgraded');
-    wss.emit('connection', ws, req);
-  });
+});
+
+wss.on('error', (err) => {
+  console.error('❌ WebSocketServer error:', err);
 });
 
 function broadcastToGroup(groupId, payload) {
@@ -218,7 +221,7 @@ wss.on('connection', (ws) => {
     }
 
     const info = clients.get(ws);
-    if (!info) return; // not authenticated yet
+    if (!info) return;
 
     // ---- JOIN GROUP ----
     if (msg.type === 'join_group') {
@@ -261,23 +264,32 @@ wss.on('connection', (ws) => {
     }
   });
 
-  ws.on('close', () => {
+  ws.on('close', (code) => {
     const info = clients.get(ws);
     if (info) {
       broadcastToGroup(info.groupId, { type: 'system', text: `${info.username} left` });
       clients.delete(ws);
-      console.log(`👋 Disconnected: ${info.username}`);
+      console.log(`👋 Disconnected: ${info.username} (code ${code})`);
     }
   });
 
   ws.on('error', (err) => {
-    console.error('WebSocket error:', err.message);
+    console.error('❌ WebSocket error:', err.message);
   });
 });
 
 // ---------- START ----------
-// Render provides PORT via env; must bind to 0.0.0.0 (not localhost)
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🎉 Server listening on 0.0.0.0:${PORT}`);
 });
+
+// ---------- SELF-PING (prevents Render free-tier spin-down) ----------
+const SELF_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+setInterval(() => {
+  fetch(`${SELF_URL}/ping`)
+    .then(() => console.log('💓 Self-ping: service awake'))
+    .catch(err => console.log('💓 Self-ping failed:', err.message));
+}, 10 * 60 * 1000); // Every 10 minutes
+
+console.log(`💓 Self-ping scheduled every 10 minutes → ${SELF_URL}/ping`);

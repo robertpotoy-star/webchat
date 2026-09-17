@@ -69,7 +69,12 @@ function sendJSON(res, status, obj) {
   res.writeHead(status, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(obj));
 }
-
+// Keep-alive endpoint for Render free tier
+if (req.url === '/ping') {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('pong');
+  return;
+}
 // ---------- HTTP SERVER (also serves the HTML) ----------
 const server = http.createServer(async (req, res) => {
   console.log(`${req.method} ${req.url}`);

@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "main": "server.js",
   "engines": {
-    "node": "22.11.0"
+    "node": ">=22.0.0"
   },
-"scripts": {
-  "start": "node --experimental-sqlite server.js"
+  "scripts": {
+    "start": "node --experimental-sqlite server.js"
   },
   "dependencies": {
     "ws": "^8.18.0",

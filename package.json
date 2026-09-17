@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "ws": "^8.18.0",
-    "bcryptjs": "^2.4.3",
-    "better-sqlite3": "^11.5.0"
+    "bcryptjs": "^2.4.3"
   }
 }

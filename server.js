@@ -160,6 +160,14 @@ const clients = new Map(); // ws -> { userId, username, groupId }
 // Manual upgrade handling — this is what makes WebSocket work on Render
 server.on('upgrade', (req, socket, head) => {
   console.log('🔄 Upgrade request:', req.url, 'from', req.headers.host);
+  
+  // Only accept upgrades on /ws, reject others gracefully
+  if (req.url !== '/ws') {
+    console.log('❌ Upgrade on wrong path:', req.url);
+    socket.destroy();
+    return;
+  }
+  
   wss.handleUpgrade(req, socket, head, (ws) => {
     console.log('✅ WebSocket upgraded');
     wss.emit('connection', ws, req);

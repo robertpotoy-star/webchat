@@ -2,12 +2,15 @@
   "name": "discord-chat",
   "version": "1.0.0",
   "main": "server.js",
+  "engines": {
+    "node": "22.11.0"
+  },
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "ws": "^8.16.0",
+    "ws": "^8.18.0",
     "bcryptjs": "^2.4.3",
-    "better-sqlite3": "^11.3.0"
+    "better-sqlite3": "^11.5.0"
   }
 }

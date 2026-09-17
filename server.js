@@ -4,7 +4,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 const bcrypt = require('bcryptjs');
-const Database = require('better-sqlite3');
+const { DatabaseSync } = require('node:sqlite');
 
 // ---------- GLOBAL CRASH LOGGING ----------
 // So Render logs show the real error if anything crashes
@@ -21,7 +21,7 @@ console.log('Node version:', process.version);
 // ---------- DATABASE ----------
 let db;
 try {
-  db = new Database('chat.db');
+  db = new DatabaseSync('chat.db');
   console.log('✅ Database opened');
 } catch (e) {
   console.error('❌ Database failed:', e.message);
